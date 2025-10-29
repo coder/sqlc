@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"github.com/sqlc-dev/sqlc/internal/compiler"
-	"github.com/sqlc-dev/sqlc/internal/config"
-	"github.com/sqlc-dev/sqlc/internal/config/convert"
-	"github.com/sqlc-dev/sqlc/internal/info"
-	"github.com/sqlc-dev/sqlc/internal/plugin"
-	"github.com/sqlc-dev/sqlc/internal/sql/catalog"
+	"github.com/coder/sqlc/internal/compiler"
+	"github.com/coder/sqlc/internal/config"
+	"github.com/coder/sqlc/internal/config/convert"
+	"github.com/coder/sqlc/internal/info"
+	"github.com/coder/sqlc/internal/plugin"
+	"github.com/coder/sqlc/internal/sql/catalog"
 )
 
 func pluginSettings(r *compiler.Result, cs config.CombinedSettings) *plugin.Settings {

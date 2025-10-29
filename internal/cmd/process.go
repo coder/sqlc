@@ -11,10 +11,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/sqlc-dev/sqlc/internal/compiler"
-	"github.com/sqlc-dev/sqlc/internal/config"
-	"github.com/sqlc-dev/sqlc/internal/debug"
-	"github.com/sqlc-dev/sqlc/internal/opts"
+	"github.com/coder/sqlc/internal/compiler"
+	"github.com/coder/sqlc/internal/config"
+	"github.com/coder/sqlc/internal/debug"
+	"github.com/coder/sqlc/internal/opts"
 )
 
 type OutputPair struct {
