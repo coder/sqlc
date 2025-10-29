@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
-	migrate "github.com/sqlc-dev/sqlc/internal/migrations"
-	"github.com/sqlc-dev/sqlc/internal/sql/sqlpath"
-	"github.com/sqlc-dev/sqlc/internal/sqltest/docker"
+	migrate "github.com/coder/sqlc/internal/migrations"
+	"github.com/coder/sqlc/internal/sql/sqlpath"
+	"github.com/coder/sqlc/internal/sqltest/docker"
 )
 
 var mysqlSync sync.Once
