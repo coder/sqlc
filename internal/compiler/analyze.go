@@ -79,9 +79,13 @@ func combineAnalysis(prev *analysis, a *analyzer.Analysis) *analysis {
 	}
 	if len(prev.Columns) == len(cols) {
 		for i := range prev.Columns {
-			prev.Columns[i].DataType = cols[i].DataType
-			prev.Columns[i].IsArray = cols[i].IsArray
-			prev.Columns[i].ArrayDims = cols[i].ArrayDims
+			// Only override column types if the analyzer provides a specific type
+			// (not "any"), since the catalog-based inference may have better info
+			if cols[i].DataType != "any" {
+				prev.Columns[i].DataType = cols[i].DataType
+				prev.Columns[i].IsArray = cols[i].IsArray
+				prev.Columns[i].ArrayDims = cols[i].ArrayDims
+			}
 		}
 	} else {
 		embedding := false
@@ -96,9 +100,13 @@ func combineAnalysis(prev *analysis, a *analyzer.Analysis) *analysis {
 	}
 	if len(prev.Parameters) == len(params) {
 		for i := range prev.Parameters {
-			prev.Parameters[i].Column.DataType = params[i].Column.DataType
-			prev.Parameters[i].Column.IsArray = params[i].Column.IsArray
-			prev.Parameters[i].Column.ArrayDims = params[i].Column.ArrayDims
+			// Only override parameter types if the analyzer provides a specific type
+			// (not "any"), since the catalog-based inference may have better info
+			if params[i].Column.DataType != "any" {
+				prev.Parameters[i].Column.DataType = params[i].Column.DataType
+				prev.Parameters[i].Column.IsArray = params[i].Column.IsArray
+				prev.Parameters[i].Column.ArrayDims = params[i].Column.ArrayDims
+			}
 		}
 	} else {
 		prev.Parameters = params
@@ -136,12 +144,12 @@ func (c *Compiler) _analyzeQuery(raw *ast.RawStmt, query string, failfast bool) 
 	var table *ast.TableName
 	switch n := raw.Stmt.(type) {
 	case *ast.InsertStmt:
-		if err := check(validate.InsertStmt(n)); err != nil {
-			return nil, err
-		}
 		var err error
 		table, err = ParseTableName(n.Relation)
 		if err := check(err); err != nil {
+			return nil, err
+		}
+		if err := check(validate.InsertStmt(c.catalog, table, n)); err != nil {
 			return nil, err
 		}
 	}

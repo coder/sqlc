@@ -6,41 +6,78 @@ This document provides essential information for working with the sqlc codebase,
 
 ### Prerequisites
 
-- **Go 1.25.0+** - Required for building and testing
-- **Docker & Docker Compose** - Required for integration tests with databases
+- **Go 1.26.2+** - Required for building and testing
+- **Docker & Docker Compose** - Required for integration tests with databases (local development)
 - **Git** - For version control
 
-### Running Tests
+## Database Setup with sqlc-test-setup
 
-#### Basic Unit Tests (No Database Required)
+The `sqlc-test-setup` tool (`cmd/sqlc-test-setup/`) automates installing and starting PostgreSQL and MySQL for tests. Both commands are idempotent and safe to re-run.
+
+### Install databases
 
 ```bash
-# Simplest approach - runs all unit tests
-go test ./...
-
-# Using make
-make test
+go run ./cmd/sqlc-test-setup install
 ```
 
-#### Full Test Suite with Integration Tests
+This will:
+- Configure the apt proxy (if `http_proxy` is set, e.g. in Claude Code remote environments)
+- Install PostgreSQL via apt
+- Download and install MySQL 9 from Oracle's deb bundle
+- Resolve all dependencies automatically
+- Skip anything already installed
+
+### Start databases
 
 ```bash
-# Step 1: Start database containers
-docker compose up -d
+go run ./cmd/sqlc-test-setup start
+```
 
-# Step 2: Run all tests including examples
+This will:
+- Start PostgreSQL and configure password auth (`postgres`/`postgres`)
+- Start MySQL via `mysqld_safe` and set root password (`mysecretpassword`)
+- Verify both connections
+- Skip steps that are already done (running services, existing config)
+
+Connection URIs after start:
+- PostgreSQL: `postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable`
+- MySQL: `root:mysecretpassword@tcp(127.0.0.1:3306)/mysql`
+
+### Run tests
+
+```bash
+# Full test suite (requires databases running)
 go test --tags=examples -timeout 20m ./...
-
-# Or use make for the full CI suite
-make test-ci
 ```
 
-#### Running Specific Tests
+## Running Tests
+
+### Basic Unit Tests (No Database Required)
+
+```bash
+go test ./...
+```
+
+### Full Test Suite with Docker (Local Development)
+
+```bash
+docker compose up -d
+go test --tags=examples -timeout 20m ./...
+```
+
+### Full Test Suite without Docker (Remote / CI)
+
+```bash
+go run ./cmd/sqlc-test-setup install
+go run ./cmd/sqlc-test-setup start
+go test --tags=examples -timeout 20m ./...
+```
+
+### Running Specific Tests
 
 ```bash
 # Test a specific package
 go test ./internal/config
-go test ./internal/compiler
 
 # Run with verbose output
 go test -v ./internal/config
@@ -94,21 +131,6 @@ The `docker-compose.yml` provides test databases:
   - Password: `mysecretpassword`
   - Database: `dinotest`
 
-### Managing Databases
-
-```bash
-# Start databases
-make start
-# or
-docker compose up -d
-
-# Stop databases
-docker compose down
-
-# View logs
-docker compose logs -f
-```
-
 ## Makefile Targets
 
 ```bash
@@ -125,22 +147,10 @@ make start             # Start database containers
 ### GitHub Actions Workflow
 
 - **File:** `.github/workflows/ci.yml`
-- **Go Version:** 1.25.0
+- **Go Version:** 1.26.2
+- **Database Setup:** Uses `sqlc-test-setup` (not Docker) to install and start PostgreSQL and MySQL directly on the runner
 - **Test Command:** `gotestsum --junitfile junit.xml -- --tags=examples -timeout 20m ./...`
 - **Additional Checks:** `govulncheck` for vulnerability scanning
-
-### Running Tests Like CI Locally
-
-```bash
-# Install CI tools (optional)
-go install gotest.tools/gotestsum@latest
-
-# Run tests with same timeout as CI
-go test --tags=examples -timeout 20m ./...
-
-# Or use the CI make target
-make test-ci
-```
 
 ## Development Workflow
 
@@ -156,37 +166,18 @@ go build -o ~/go/bin/sqlc-gen-json ./cmd/sqlc-gen-json
 
 ### Environment Variables for Tests
 
-You can customize database connections:
+You can override database connections via environment variables:
 
-**PostgreSQL:**
 ```bash
-PG_HOST=127.0.0.1
-PG_PORT=5432
-PG_USER=postgres
-PG_PASSWORD=mysecretpassword
-PG_DATABASE=dinotest
-```
-
-**MySQL:**
-```bash
-MYSQL_HOST=127.0.0.1
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_ROOT_PASSWORD=mysecretpassword
-MYSQL_DATABASE=dinotest
-```
-
-**Example:**
-```bash
-POSTGRESQL_SERVER_URI="postgres://postgres:mysecretpassword@localhost:5432/postgres" \
-  go test -v ./...
+POSTGRESQL_SERVER_URI="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+MYSQL_SERVER_URI="root:mysecretpassword@tcp(127.0.0.1:3306)/mysql?multiStatements=true&parseTime=true"
 ```
 
 ## Code Structure
 
 ### Key Directories
 
-- `/cmd/` - Main binaries (sqlc, sqlc-gen-json)
+- `/cmd/` - Main binaries (sqlc, sqlc-gen-json, sqlc-test-setup)
 - `/internal/cmd/` - Command implementations (vet, generate, etc.)
 - `/internal/engine/` - Database engine implementations
   - `/postgresql/` - PostgreSQL parser and converter
@@ -196,6 +187,7 @@ POSTGRESQL_SERVER_URI="postgres://postgres:mysecretpassword@localhost:5432/postg
 - `/internal/codegen/` - Code generation for different languages
 - `/internal/config/` - Configuration file parsing
 - `/internal/endtoend/` - End-to-end tests
+- `/internal/sqltest/` - Test database setup (Docker, native, local detection)
 - `/examples/` - Example projects for testing
 
 ### Important Files
@@ -203,13 +195,12 @@ POSTGRESQL_SERVER_URI="postgres://postgres:mysecretpassword@localhost:5432/postg
 - `/Makefile` - Build and test targets
 - `/docker-compose.yml` - Database services for testing
 - `/.github/workflows/ci.yml` - CI configuration
-- `/docs/guides/development.md` - Developer documentation
 
 ## Common Issues & Solutions
 
 ### Network Connectivity Issues
 
-If you see errors about `storage.googleapis.com`, the Go proxy may be unreachable. Tests may still pass for packages that don't require network dependencies.
+If you see errors about `storage.googleapis.com`, the Go proxy may be unreachable. Use `GOPROXY=direct go mod download` to fetch modules directly from source.
 
 ### Test Timeouts
 
@@ -227,19 +218,23 @@ go test -race ./...
 
 ### Database Connection Failures
 
-Ensure Docker containers are running:
+If using Docker:
 ```bash
 docker compose ps
 docker compose up -d
 ```
 
+If using sqlc-test-setup:
+```bash
+go run ./cmd/sqlc-test-setup start
+```
+
 ## Tips for Contributors
 
-1. **Run tests before committing:** `make test-ci`
+1. **Run tests before committing:** `go test --tags=examples -timeout 20m ./...`
 2. **Check for race conditions:** Use `-race` flag when testing concurrent code
 3. **Use specific package tests:** Faster iteration during development
-4. **Start databases early:** `docker compose up -d` before running integration tests
-5. **Read existing tests:** Good examples in `/internal/engine/postgresql/*_test.go`
+4. **Read existing tests:** Good examples in `/internal/engine/postgresql/*_test.go`
 
 ## Git Workflow
 
@@ -251,34 +246,18 @@ docker compose up -d
 ### Committing Changes
 
 ```bash
-# Stage changes
 git add <files>
-
-# Commit with descriptive message
-git commit -m "Brief description
-
-Detailed explanation of changes.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
-
-# Push to remote
+git commit -m "Brief description of changes"
 git push -u origin <branch-name>
 ```
 
 ### Rebasing
 
 ```bash
-# Update main
 git checkout main
 git pull origin main
-
-# Rebase feature branch
 git checkout <feature-branch>
 git rebase main
-
-# Force push rebased branch
 git push --force-with-lease origin <feature-branch>
 ```
 
@@ -288,21 +267,3 @@ git push --force-with-lease origin <feature-branch>
 - **Development Guide:** `/docs/guides/development.md`
 - **CI Configuration:** `/.github/workflows/ci.yml`
 - **Docker Compose:** `/docker-compose.yml`
-
-## Recent Fixes & Improvements
-
-### Fixed Issues
-
-1. **Typo in create_function_stmt.go** - Fixed "Undertand" → "Understand"
-2. **Race condition in vet.go** - Fixed Client initialization using `sync.Once`
-3. **Nil pointer dereference in parse.go** - Fixed unsafe type assertion in primary key parsing
-
-These fixes demonstrate common patterns:
-- Using `sync.Once` for thread-safe lazy initialization
-- Using comma-ok idiom for safe type assertions: `if val, ok := x.(Type); ok { ... }`
-- Adding proper nil checks and defensive programming
-
----
-
-**Last Updated:** 2025-10-21
-**Maintainer:** Claude Code
